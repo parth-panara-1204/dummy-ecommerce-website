@@ -1,26 +1,19 @@
 const mongoose = require("mongoose")
-const Product = require('./models/products')
+const Product = require('./models/products.js')
 const express = require('express')
+
+const product_route = require('./routes/product-route.js')
+const user_route = require('./routes/user-route.js')
 
 const app = express();
 app.use(express.json());
+app.use('/products', product_route)
+app.use('/users', user_route)
 
-
-mongoose.connect("mongodb://localhost:27017/ecommerce").then(() => {
+mongoose.connect("mongodb://localhost:27017/e-commerce").then(() => {
     console.log('connected to Mongodb');
 }).catch((err) => {
     console.error(err);
-});
-
-
-app.get("/products", async (req, res) => {
-  try {
-    const products = await Product.find();
-    res.json(products);
-  } catch (err) {
-    console.log(err)
-    res.status(500).json({ error: "Failed to get products" });
-  }
 });
 
 app.listen(3000, () => {
