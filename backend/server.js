@@ -4,11 +4,15 @@ const express = require('express')
 
 const product_route = require('./routes/product-route.js')
 const user_route = require('./routes/user-route.js')
+const order_route = require('./routes/order-route.js')
+const order_items  = require('./routes/order-item-route.js')
 
 const app = express();
 app.use(express.json());
 app.use('/products', product_route)
 app.use('/users', user_route)
+app.use('/orders', order_route)
+app.use('/order_items', order_items)
 
 mongoose.connect("mongodb://localhost:27017/e-commerce").then(() => {
     console.log('connected to Mongodb');
