@@ -1,5 +1,4 @@
 const mongoose = require("mongoose");
-const Counter = require('../models/counter.js')
 
 const userSchema = new mongoose.Schema({
   user_id: { type: Number, unique: true },
@@ -13,13 +12,8 @@ const userSchema = new mongoose.Schema({
 userSchema.pre("save", async function () {
   if (!this.isNew) return;
 
-  const counter = await Counter.findByIdAndUpdate(
-    { _id: "user_id" },
-    { $inc: { seq: 1 } },
-    { new: true, upsert: true }
-  );
-
-  this.user_id = counter.seq;
+  const maxUser = await this.constructor.findOne().sort({ user_id: -1 });
+  this.user_id = maxUser ? maxUser.user_id + 1 : 1;
 });
 
 module.exports = mongoose.model("User", userSchema);
