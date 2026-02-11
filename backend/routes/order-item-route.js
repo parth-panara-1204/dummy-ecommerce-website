@@ -4,6 +4,16 @@ const express = require('express')
 const app = express()
 app.use(express.json())
 
+app.get("/", async (req, res) => {
+  try {
+    const items = await OrderItem.find();
+    res.json(items);
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ error: "Failed to get order items" });
+  }
+});
+
 app.post("/", async (req, res) => {
   try {
     const item = new OrderItem(req.body);

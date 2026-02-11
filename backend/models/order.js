@@ -1,5 +1,4 @@
 const mongoose = require('mongoose')
-const Counter = require('../models/counter.js')
 
 const orderSchema = new mongoose.Schema({
   order_id: { type: Number, unique: true },
@@ -12,13 +11,8 @@ const orderSchema = new mongoose.Schema({
 orderSchema.pre("save", async function () {
   if (!this.isNew) return;
 
-  const counter = await Counter.findByIdAndUpdate(
-    { _id: "order_id" },
-    { $inc: { seq: 1 } },
-    { new: true, upsert: true }
-  );
-
-  this.order_id = counter.seq;
+  const maxOrder = await this.constructor.findOne().sort({ order_id: -1 });
+  this.order_id = maxOrder ? maxOrder.order_id + 1 : 1;
 });
 
 const Order = mongoose.model('order', orderSchema)
