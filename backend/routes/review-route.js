@@ -4,7 +4,6 @@ const Review = require('../models/reviews.js');
 const app = express();
 app.use(express.json());
 
-// Get reviews for a specific product
 app.get('/product/:productId', async (req, res) => {
   try {
     const reviews = await Review.find({ product_id: parseInt(req.params.productId) });
@@ -15,7 +14,6 @@ app.get('/product/:productId', async (req, res) => {
   }
 });
 
-// Get all reviews
 app.get('/', async (req, res) => {
   try {
     const reviews = await Review.find();
@@ -26,7 +24,6 @@ app.get('/', async (req, res) => {
   }
 });
 
-// Create a new review
 app.post('/', async (req, res) => {
   try {
     const reviewCount = await Review.countDocuments();
