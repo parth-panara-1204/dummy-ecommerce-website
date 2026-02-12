@@ -10,7 +10,8 @@ export default function Login() {
     name: "",
     email: "",
     gender: "",
-    city: ""
+    city: "",
+    password: ""
   });
   const [message, setMessage] = useState("");
   
@@ -35,24 +36,30 @@ export default function Login() {
         localStorage.setItem("user", JSON.stringify(response.data));
         setTimeout(() => navigate(from), 2000);
       } catch (err) {
-        setMessage("Error creating account. Please try again.");
+        if (err.response && err.response.status === 409) {
+          setMessage("This email is already taken. Please use another one or log in.");
+        } else {
+          setMessage("Error creating account. Please try again.");
+        }
         console.error(err);
       }
     } else {
-      // Login - find user by email
+      // Login - check email and password
       try {
-        const response = await API.get("/users");
-        const user = response.data.find(u => u.email === formData.email);
-        
-        if (user) {
-          localStorage.setItem("user", JSON.stringify(user));
-          setMessage("Login successful!");
-          setTimeout(() => navigate(from), 1000);
-        } else {
-          setMessage("User not found. Please sign up!");
-        }
+        const response = await API.post("/users/login", {
+          email: formData.email,
+          password: formData.password
+        });
+
+        localStorage.setItem("user", JSON.stringify(response.data));
+        setMessage("Login successful!");
+        setTimeout(() => navigate(from), 1000);
       } catch (err) {
-        setMessage("Error logging in. Please try again.");
+        if (err.response && err.response.status === 401) {
+          setMessage("Invalid email or password.");
+        } else {
+          setMessage("Error logging in. Please try again.");
+        }
         console.error(err);
       }
     }
@@ -98,6 +105,19 @@ export default function Login() {
                 id="email"
                 name="email"
                 value={formData.email}
+                onChange={handleChange}
+                required
+                className="form-input"
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="password">Password *</label>
+              <input
+                type="password"
+                id="password"
+                name="password"
+                value={formData.password}
                 onChange={handleChange}
                 required
                 className="form-input"
