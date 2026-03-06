@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import API from "../api";
 import Nav from "../components/Nav";
@@ -20,6 +20,7 @@ export default function ProductDetail() {
     review_text: ''
   });
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const viewSent = useRef(false);
 
   const loadReviews = () => {
     if (product) {
@@ -46,15 +47,16 @@ export default function ProductDetail() {
             })
             .catch(err => console.error("Error fetching reviews:", err));
           
-          // Track view event
-          const user = JSON.parse(localStorage.getItem("user") || "{}");
-          API.post("/events", {
-            user_id: user.user_id ? `U${String(user.user_id).padStart(6, '0')}` : "guest",
-            user_name: user.name || "Guest",
-            product_id: foundProduct.product_id,
-            product_name: foundProduct.product_name,
-            event_type: "view"
-          }).catch(err => console.error("Error tracking event:", err));
+          // Track view event via Kafka (guarded so it runs once)
+          if (!viewSent.current) {
+            viewSent.current = true;
+            const user = JSON.parse(localStorage.getItem("user") || "{}");
+            API.post("/click", {
+              userId: user.user_id || null,
+              productId: foundProduct._id,
+              eventType: "view"
+            }).catch(err => console.error("Error tracking event:", err));
+          }
         }
         
         setLoading(false);
@@ -69,14 +71,12 @@ export default function ProductDetail() {
     addToCart(product, quantity);
     setAdded(true);
     
-    // Track cart event
+    // Track cart event via Kafka
     const user = JSON.parse(localStorage.getItem("user") || "{}");
-    API.post("/events", {
-      user_id: user.user_id ? `U${String(user.user_id).padStart(6, '0')}` : "guest",
-      user_name: user.name || "Guest",
-      product_id: product.product_id,
-      product_name: product.product_name,
-      event_type: "cart"
+    API.post("/click", {
+      userId: user.user_id || null,
+      productId: product._id,
+      eventType: "cart"
     }).catch(err => console.error("Error tracking event:", err));
     
     setTimeout(() => setAdded(false), 2000);
@@ -98,18 +98,16 @@ export default function ProductDetail() {
     try {
       await API.post("/reviews", {
         product_id: product.product_id,
-        user_id: `U${String(user.user_id).padStart(6, '0')}`,
+        user_id: user.user_id,
         rating: reviewForm.rating,
         review_text: reviewForm.review_text
       });
 
-      // Track review event
-      await API.post("/events", {
-        user_id: `U${String(user.user_id).padStart(6, '0')}`,
-        user_name: user.name,
-        product_id: product.product_id,
-        product_name: product.product_name,
-        event_type: "review"
+      // Track review event via Kafka
+      await API.post("/click", {
+        userId: user.user_id,
+        productId: product._id,
+        eventType: "review"
       });
 
       setReviewForm({ rating: 5, review_text: '' });

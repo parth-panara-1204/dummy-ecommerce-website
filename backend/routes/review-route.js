@@ -6,7 +6,8 @@ app.use(express.json());
 
 app.get('/product/:productId', async (req, res) => {
   try {
-    const reviews = await Review.find({ product_id: parseInt(req.params.productId) });
+    const reviews = await Review.find({ product_id: parseInt(req.params.productId) })
+      .sort({ review_date: -1 });
     res.json(reviews);
   } catch (err) {
     console.log(err);
@@ -26,15 +27,15 @@ app.get('/', async (req, res) => {
 
 app.post('/', async (req, res) => {
   try {
-    const reviewCount = await Review.countDocuments();
-    const reviewId = `R${String(reviewCount + 1).padStart(8, '0')}`;
+    const last = await Review.findOne().sort({ review_id: -1 });
+    const reviewId = last ? last.review_id + 1 : 1;
     
     const newReview = new Review({
       review_id: reviewId,
       order_id: req.body.order_id || null,
-      product_id: req.body.product_id,
-      user_id: req.body.user_id,
-      rating: req.body.rating,
+      product_id: Number(req.body.product_id),
+      user_id: Number(req.body.user_id),
+      rating: Number(req.body.rating),
       review_text: req.body.review_text,
       review_date: new Date()
     });

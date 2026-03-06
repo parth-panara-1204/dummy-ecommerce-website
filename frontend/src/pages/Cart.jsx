@@ -50,14 +50,12 @@ export default function Cart() {
 
       await Promise.all(orderItemPromises);
 
-      // Track purchase events for each product
+      // Track purchase events via Kafka
       const eventPromises = cart.map(item =>
-        API.post("/events", {
-          user_id: `U${String(user.user_id).padStart(6, '0')}`,
-          user_name: user.name,
-          product_id: item.product_id,
-          product_name: item.product_name,
-          event_type: "purchase"
+        API.post("/click", {
+          userId: user.user_id,
+          productId: item._id,
+          eventType: "purchase"
         })
       );
 
