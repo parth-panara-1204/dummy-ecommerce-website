@@ -5,15 +5,17 @@ const app = express()
 app.use(express.json())
 
 app.post('/', async (req, res) => {
-    
-    const clickEvent = {
-        userId: req.body.userId,
-        productId: req.body.productId,
+    const { userId, productId, eventType, ...rest } = req.body
+
+    const event = {
+        userId,
+        productId,
+        eventType: eventType || 'click',
         timestamp: new Date().toISOString(),
-        eventType: 'click'
+        ...rest
     }
 
-    await sendEvent('clickStream', clickEvent)
+    await sendEvent('clickStream', event)
 
     res.status(200).send('event sent to kafka!')
 })
