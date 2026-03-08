@@ -23,8 +23,30 @@ app.use('/order_items', order_items)
 app.use('/reviews', review_route)
 app.use('/click', kafka_route)
 
-mongoose.connect("mongodb://localhost:27017/e-commerce").then(() => {
+mongoose.connect("mongodb://localhost:27017/e-commerce").then(async () => {
     console.log('connected to Mongodb');
+
+    // Seed order_item_id counter from current max (only on first boot)
+    const OrderItem = require('./models/order_items');
+    const { Counter } = require('./models/order_items');
+    const maxItem = await OrderItem.findOne().sort({ order_item_id: -1 });
+    await Counter.findOneAndUpdate(
+      { _id: 'order_item_id' },
+      { $setOnInsert: { seq: maxItem ? maxItem.order_item_id : 0 } },
+      { upsert: true }
+    );
+
+    // Seed order_id counter from current max (only on first boot)
+    const Order = require('./models/order.js');
+    const { OrderCounter } = require('./models/order.js');
+    const maxOrder = await Order.findOne().sort({ order_id: -1 });
+    await OrderCounter.findOneAndUpdate(
+      { _id: 'order_id' },
+      { $setOnInsert: { seq: maxOrder ? maxOrder.order_id : 0 } },
+      { upsert: true }
+    );
+
+    console.log('counters ready');
 }).catch((err) => {
     console.error(err);
 });

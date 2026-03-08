@@ -50,10 +50,11 @@ export default function ProductDetail() {
           // Track view event via Kafka (guarded so it runs once)
           if (!viewSent.current) {
             viewSent.current = true;
-            const user = JSON.parse(localStorage.getItem("user") || "{}");
+            const userStr = sessionStorage.getItem("user") || localStorage.getItem("user") || "{}";
+            const user = JSON.parse(userStr);
             API.post("/click", {
               userId: user.user_id || null,
-              productId: foundProduct._id,
+              productId: Number(foundProduct.product_id),
               eventType: "view"
             }).catch(err => console.error("Error tracking event:", err));
           }
@@ -72,10 +73,11 @@ export default function ProductDetail() {
     setAdded(true);
     
     // Track cart event via Kafka
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
+    const userStr = sessionStorage.getItem("user") || localStorage.getItem("user") || "{}";
+    const user = JSON.parse(userStr);
     API.post("/click", {
       userId: user.user_id || null,
-      productId: product._id,
+      productId: Number(product.product_id),
       eventType: "cart"
     }).catch(err => console.error("Error tracking event:", err));
     
@@ -85,7 +87,7 @@ export default function ProductDetail() {
   const handleReviewSubmit = async (e) => {
     e.preventDefault();
     
-    const userData = localStorage.getItem("user");
+    const userData = sessionStorage.getItem("user") || localStorage.getItem("user");
     if (!userData) {
       alert("Please login to submit a review");
       navigate("/login", { state: { from: `/product/${id}` } });
@@ -105,8 +107,8 @@ export default function ProductDetail() {
 
       // Track review event via Kafka
       await API.post("/click", {
-        userId: user.user_id,
-        productId: product._id,
+        userId: user.user_id || null,
+        productId: Number(product.product_id),
         eventType: "review"
       });
 

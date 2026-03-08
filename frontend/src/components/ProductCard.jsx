@@ -4,11 +4,12 @@ import API from "../api";
 export default function ProductCard({ product }) {
   const handleClick = () => {
     try {
-      const user = JSON.parse(localStorage.getItem("user") || "null");
+      const userStr = sessionStorage.getItem("user") || localStorage.getItem("user") || "null";
+      const user = JSON.parse(userStr);
       const userId = user && user.user_id ? user.user_id : null;
       API.post('/click', {
         userId,
-        productId: product._id
+        productId: Number(product.product_id)
       }).catch(err => console.error('Click track error:', err));
     } catch (err) {
       console.error('Error reading user for click event:', err);

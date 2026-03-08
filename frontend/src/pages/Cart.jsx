@@ -12,7 +12,7 @@ export default function Cart() {
 
   const handleCheckout = async () => {
     // Check if user is logged in
-    const userData = localStorage.getItem("user");
+    const userData = sessionStorage.getItem("user") || localStorage.getItem("user");
     
     if (!userData) {
       // User not logged in - redirect to login
@@ -50,16 +50,14 @@ export default function Cart() {
 
       await Promise.all(orderItemPromises);
 
-      // Track purchase events via Kafka
-      const eventPromises = cart.map(item =>
+      // Track purchase events via Kafka (fire-and-forget - don't block checkout)
+      cart.forEach(item => {
         API.post("/click", {
-          userId: user.user_id,
-          productId: item._id,
+          userId: user.user_id || null,
+          productId: Number(item.product_id),
           eventType: "purchase"
-        })
-      );
-
-      await Promise.all(eventPromises);
+        }).catch(err => console.error("Kafka purchase track error:", err));
+      });
 
       // Show success and clear cart
       setOrderSuccess(true);
