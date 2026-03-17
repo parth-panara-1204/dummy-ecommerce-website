@@ -52,8 +52,9 @@ export default function Cart() {
 
       // Track purchase events via Kafka (fire-and-forget - don't block checkout)
       cart.forEach(item => {
-        API.post("/click", {
+        API.post("/events", {
           userId: user.user_id || null,
+          quantity: item.quantity,
           productId: Number(item.product_id),
           eventType: "purchase"
         }).catch(err => console.error("Kafka purchase track error:", err));

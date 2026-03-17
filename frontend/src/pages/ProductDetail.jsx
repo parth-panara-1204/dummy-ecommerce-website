@@ -52,7 +52,7 @@ export default function ProductDetail() {
             viewSent.current = true;
             const userStr = sessionStorage.getItem("user") || localStorage.getItem("user") || "{}";
             const user = JSON.parse(userStr);
-            API.post("/click", {
+            API.post("/events", {
               userId: user.user_id || null,
               productId: Number(foundProduct.product_id),
               eventType: "view"
@@ -75,8 +75,9 @@ export default function ProductDetail() {
     // Track cart event via Kafka
     const userStr = sessionStorage.getItem("user") || localStorage.getItem("user") || "{}";
     const user = JSON.parse(userStr);
-    API.post("/click", {
+    API.post("/events", {
       userId: user.user_id || null,
+      quantity: quantity,
       productId: Number(product.product_id),
       eventType: "cart"
     }).catch(err => console.error("Error tracking event:", err));
@@ -106,7 +107,7 @@ export default function ProductDetail() {
       });
 
       // Track review event via Kafka
-      await API.post("/click", {
+      await API.post("/events", {
         userId: user.user_id || null,
         productId: Number(product.product_id),
         eventType: "review"

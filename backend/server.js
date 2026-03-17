@@ -21,7 +21,7 @@ app.use('/users', user_route)
 app.use('/orders', order_route)
 app.use('/order_items', order_items)
 app.use('/reviews', review_route)
-app.use('/click', kafka_route)
+app.use('/events', kafka_route)
 
 mongoose.connect("mongodb://localhost:27017/e-commerce").then(async () => {
     console.log('connected to Mongodb');
