@@ -27,7 +27,23 @@ export default function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+    const email = formData.email.trim().toLowerCase();
+    const password = formData.password;
+
+    if (email === "admin@eshop.com" && password === "admin123") {
+      const adminUser = {
+        user_id: "admin",
+        name: "Admin",
+        email: "admin@eshop.com",
+        role: "admin",
+        is_admin: true
+      };
+      localStorage.setItem("user", JSON.stringify(adminUser));
+      setMessage("Admin login successful!");
+      setTimeout(() => navigate("/admin"), 800);
+      return;
+    }
+
     if (isSignup) {
       // Sign up - create new user
       try {
@@ -47,8 +63,8 @@ export default function Login() {
       // Login - check email and password
       try {
         const response = await API.post("/users/login", {
-          email: formData.email,
-          password: formData.password
+          email,
+          password
         });
 
         localStorage.setItem("user", JSON.stringify(response.data));
