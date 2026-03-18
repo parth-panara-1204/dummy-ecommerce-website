@@ -6,8 +6,6 @@ com.amazonaws:aws-java-sdk-bundle:1.12.262 \
   spark/stream_orders.py
 """
 
-
-
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, from_json
 from pyspark.sql.types import *
