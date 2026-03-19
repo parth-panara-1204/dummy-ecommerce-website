@@ -95,20 +95,26 @@ export default function ProductDetail() {
       return;
     }
 
-    const user = JSON.parse(userData);
+    const parsedUser = JSON.parse(userData);
+    const isAdminUser = parsedUser?.is_admin || parsedUser?.role === "admin" || parsedUser?.email === "admin@eshop.com";
+    if (isAdminUser) {
+      alert("Admins cannot submit reviews.");
+      return;
+    }
+
     setReviewSubmitting(true);
 
     try {
       await API.post("/reviews", {
         product_id: product.product_id,
-        user_id: user.user_id,
+        user_id: parsedUser.user_id,
         rating: reviewForm.rating,
         review_text: reviewForm.review_text
       });
 
       // Track review event via Kafka
       await API.post("/events", {
-        userId: user.user_id || null,
+        userId: parsedUser.user_id || null,
         productId: Number(product.product_id),
         eventType: "review"
       });
@@ -224,13 +230,19 @@ export default function ProductDetail() {
               <h2>Customer Reviews</h2>
               <button 
                 onClick={() => {
-                  const user = localStorage.getItem("user");
-                  if (!user) {
+                  const userStr = localStorage.getItem("user");
+                  if (!userStr) {
                     alert("Please login to write a review");
                     navigate("/login", { state: { from: `/product/${id}` } });
-                  } else {
-                    setShowReviewForm(!showReviewForm);
+                    return;
                   }
+                  const parsed = JSON.parse(userStr);
+                  const isAdminUser = parsed?.is_admin || parsed?.role === "admin" || parsed?.email === "admin@eshop.com";
+                  if (isAdminUser) {
+                    alert("Admins cannot submit reviews.");
+                    return;
+                  }
+                  setShowReviewForm(!showReviewForm);
                 }}
                 className="btn btn-secondary"
               >

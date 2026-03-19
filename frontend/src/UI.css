@@ -607,3 +607,167 @@ body {
   font-style: italic;
 }
 
+/* Admin Dashboard */
+.admin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.stat-card {
+  border: 1px solid #ddd;
+  padding: 16px;
+  background: #fafafa;
+}
+
+.stat-label {
+  color: #666;
+  font-size: 12px;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: bold;
+}
+
+.stat-meta {
+  color: #888;
+  font-size: 12px;
+}
+
+.admin-panels {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+.panel {
+  border: 1px solid #ddd;
+  background: #fff;
+  padding: 16px;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.panel-meta {
+  color: #666;
+  font-size: 12px;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.data-table th,
+.data-table td {
+  border: 1px solid #eee;
+  padding: 10px;
+  text-align: left;
+}
+
+.data-table th {
+  background: #fafafa;
+  font-weight: 600;
+}
+
+.muted {
+  color: #777;
+}
+
+.alert {
+  padding: 12px 14px;
+  border-radius: 4px;
+  margin-bottom: 12px;
+}
+
+.alert-error {
+  background: #ffe8e8;
+  color: #a33;
+  border: 1px solid #f5c2c2;
+}
+
+/* Dashboard-inspired layout */
+.dashboard-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 16px 0;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin: 12px 0 20px;
+}
+
+.snapshot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.sparkline-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.sparkline {
+  width: 100%;
+  height: 80px;
+}
+
+.product-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.image-preview {
+  border: 1px dashed #ddd;
+  padding: 12px;
+  border-radius: 6px;
+  background: #fafafa;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.image-preview img {
+  max-width: 260px;
+  border-radius: 6px;
+  border: 1px solid #eee;
+}
+
+.image-placeholder {
+  padding: 16px;
+  background: #f0f0f0;
+  border-radius: 6px;
+  color: #666;
+}
+
+@media (max-width: 900px) {
+  .dashboard-layout {
+    grid-template-columns: 1fr;
+  }
+}
+

@@ -14,6 +14,8 @@ export default function Nav() {
     }
   }, []);
 
+  const isAdmin = user && (user.is_admin || user.role === "admin" || user.email === "admin@eshop.com");
+
   const handleLogout = () => {
     localStorage.removeItem("user");
     setUser(null);
@@ -25,6 +27,12 @@ export default function Nav() {
       <Link to="/cart" className="nav-item">
         Cart {itemCount > 0 && `(${itemCount})`}
       </Link>
+      {isAdmin && (
+        <>
+          <Link to="/admin" className="nav-item">Admin</Link>
+          <Link to="/admin/add-product" className="nav-item">Add Product</Link>
+        </>
+      )}
       {user ? (
         <div className="nav-item" style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
           <span>Hello, {user.name}</span>
