@@ -21,6 +21,9 @@ export default function ProductDetail() {
   });
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const viewSent = useRef(false);
+  const userData = sessionStorage.getItem("user") || localStorage.getItem("user");
+  const parsedUser = userData ? JSON.parse(userData) : null;
+  const isAdminUser = parsedUser?.is_admin || parsedUser?.role === "admin" || parsedUser?.email === "admin@eshop.com";
 
   const loadReviews = () => {
     if (product) {
@@ -69,6 +72,10 @@ export default function ProductDetail() {
   }, [id]);
 
   const handleAddToCart = () => {
+    if (isAdminUser) {
+      alert("Admins cannot shop products.");
+      return;
+    }
     addToCart(product, quantity);
     setAdded(true);
     
@@ -218,9 +225,11 @@ export default function ProductDetail() {
               <button
                 onClick={handleAddToCart}
                 className={`btn btn-primary ${added ? "btn-success" : ""}`}
+                disabled={isAdminUser}
               >
-                {added ? "✓ Added to Cart" : "Add to Cart"}
+                {isAdminUser ? "Admins cannot shop" : added ? "✓ Added to Cart" : "Add to Cart"}
               </button>
+              {isAdminUser && <p className="muted">Admin accounts can manage products, but cannot purchase.</p>}
             </div>
           </div>
 

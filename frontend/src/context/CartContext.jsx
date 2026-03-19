@@ -8,11 +8,20 @@ export function CartProvider({ children }) {
     return savedCart ? JSON.parse(savedCart) : [];
   });
 
+  const isAdminSession = () => {
+    const userData = sessionStorage.getItem("user") || localStorage.getItem("user");
+    if (!userData) return false;
+    const user = JSON.parse(userData);
+    return user?.is_admin || user?.role === "admin" || user?.email === "admin@eshop.com";
+  };
+
   useEffect(() => {
     localStorage.setItem("cart", JSON.stringify(cart));
   }, [cart]);
 
   const addToCart = (product, quantity = 1) => {
+    if (isAdminSession()) return;
+
     setCart(prevCart => {
       const existingItem = prevCart.find(item => item._id === product._id);
       if (existingItem) {

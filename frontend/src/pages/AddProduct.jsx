@@ -6,12 +6,13 @@ import API from "../api";
 export default function AddProduct() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
+  const [existingCategories, setExistingCategories] = useState([]);
   const [productForm, setProductForm] = useState({
     product_name: "",
     brand: "",
     category: "",
     price: "",
-    rating: "",
+    rating: "0",
     stock: "",
     image_url: ""
   });
@@ -27,6 +28,21 @@ export default function AddProduct() {
       return;
     }
     setUser(JSON.parse(storedUser));
+
+    API.get("/products")
+      .then((res) => {
+        const categories = Array.from(
+          new Set(
+            (res.data || [])
+              .map((p) => (p.category || "").trim())
+              .filter(Boolean)
+          )
+        ).sort((a, b) => a.localeCompare(b));
+        setExistingCategories(categories);
+      })
+      .catch((err) => {
+        console.error("Load categories error", err);
+      });
   }, [navigate]);
 
   const isAdmin = useMemo(() => {
@@ -69,7 +85,7 @@ export default function AddProduct() {
 
       const res = await API.post("/products", payload);
       setMessage(`Product created (id: ${res.data?._id || res.data?.product_id || "new"}).`);
-      setProductForm({ product_name: "", brand: "", category: "", price: "", rating: "", stock: "", image_url: "" });
+      setProductForm({ product_name: "", brand: "", category: "", price: "", rating: "0", stock: "", image_url: "" });
       setImageData("");
       setPreview("");
       setTimeout(() => navigate("/admin"), 1200);
@@ -121,7 +137,20 @@ export default function AddProduct() {
               </div>
               <div className="form-group">
                 <label htmlFor="p-category">Category</label>
-                <input id="p-category" className="form-input" value={productForm.category} onChange={(e) => setProductForm({ ...productForm, category: e.target.value })} required />
+                <input
+                  id="p-category"
+                  list="category-options"
+                  className="form-input"
+                  value={productForm.category}
+                  onChange={(e) => setProductForm({ ...productForm, category: e.target.value })}
+                  placeholder="Select existing or type a new category"
+                  required
+                />
+                <datalist id="category-options">
+                  {existingCategories.map((cat) => (
+                    <option key={cat} value={cat} />
+                  ))}
+                </datalist>
               </div>
               <div className="form-group">
                 <label htmlFor="p-price">Price</label>

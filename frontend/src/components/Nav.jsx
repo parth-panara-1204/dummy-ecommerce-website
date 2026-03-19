@@ -24,9 +24,11 @@ export default function Nav() {
   return (
     <nav className="nav-bar">
       <Link to="/" className="nav-item">Products</Link>
-      <Link to="/cart" className="nav-item">
-        Cart {itemCount > 0 && `(${itemCount})`}
-      </Link>
+      {!isAdmin && (
+        <Link to="/cart" className="nav-item">
+          Cart {itemCount > 0 && `(${itemCount})`}
+        </Link>
+      )}
       {isAdmin && (
         <>
           <Link to="/admin" className="nav-item">Admin</Link>

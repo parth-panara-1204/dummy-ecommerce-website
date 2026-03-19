@@ -9,8 +9,16 @@ export default function Cart() {
   const { cart, removeFromCart, updateQuantity, clearCart, getTotal } = useCart();
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
+  const userData = sessionStorage.getItem("user") || localStorage.getItem("user");
+  const parsedUser = userData ? JSON.parse(userData) : null;
+  const isAdminUser = parsedUser?.is_admin || parsedUser?.role === "admin" || parsedUser?.email === "admin@eshop.com";
 
   const handleCheckout = async () => {
+    if (isAdminUser) {
+      alert("Admins cannot place orders.");
+      return;
+    }
+
     // Check if user is logged in
     const userData = sessionStorage.getItem("user") || localStorage.getItem("user");
     
@@ -74,6 +82,25 @@ export default function Cart() {
       setIsProcessing(false);
     }
   };
+
+  if (isAdminUser) {
+    return (
+      <div className="app">
+        <Nav />
+        <main className="main">
+          <div className="container">
+            <div className="empty-state">
+              <h2>Shopping disabled for admin</h2>
+              <p>Admin accounts can manage the catalog but cannot add items to cart or checkout.</p>
+              <button onClick={() => navigate("/admin")} className="btn btn-primary">
+                Go to Dashboard
+              </button>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   if (cart.length === 0) {
     return (

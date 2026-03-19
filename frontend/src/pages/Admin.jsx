@@ -132,8 +132,6 @@ export default function Admin() {
     return `₹${num.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
-  const goToAddProduct = () => navigate("/admin/add-product");
-
   const topProducts = useMemo(() => {
     return [...products]
       .sort((a, b) => (Number(b.rating) || 0) - (Number(a.rating) || 0))
@@ -292,19 +290,6 @@ export default function Admin() {
                       </tbody>
                     </table>
                   )}
-                </div>
-              </div>
-
-              <div className="dashboard-layout">
-                <div className="panel" style={{ gridColumn: "1 / -1" }}>
-                  <div className="panel-header" style={{ justifyContent: "space-between" }}>
-                    <div>
-                      <h3>Add Product</h3>
-                      <span className="panel-meta">Opens dedicated product creation page</span>
-                    </div>
-                    <button className="btn btn-primary" onClick={goToAddProduct}>Go to Add Product</button>
-                  </div>
-                  <p className="muted">Use the add-product page to create items with image upload and stock fields.</p>
                 </div>
               </div>
 
