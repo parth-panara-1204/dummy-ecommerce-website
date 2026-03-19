@@ -1,9 +1,12 @@
-const Product = require('../models/products.js')
-const express = require('express')
-const Minio = require('minio')
+const express = require('express');
+const Product = require('../models/products.js');
+const { Counter: ProductCounter } = require('../models/products.js');
+const Minio = require('minio');
+const fs = require('fs');
+const fsp = fs.promises;
+const path = require('path');
 
-const app = express()
-app.use(express.json())
+const router = express.Router();
 
 const minioClient = new Minio.Client({
   endPoint: process.env.MINIO_ENDPOINT || 'localhost',
@@ -14,13 +17,58 @@ const minioClient = new Minio.Client({
 })
 
 const minioBucket = process.env.MINIO_BUCKET || 'datalake'
+const assetBaseDir = path.join(__dirname, '..', '..', 'assets')
+const assetBaseUrl = process.env.ASSET_BASE_URL || 'http://localhost:3000/assets'
 const imageExtPattern = /\.(png|jpe?g|webp|gif|bmp|svg)$/i
 const presignedCache = new Map()
 const productsResponseCache = { data: null, expiresAt: 0 }
+const localCategoryCache = new Map()
 const productsCacheTtlMs = Number(process.env.PRODUCTS_CACHE_TTL_MS || 30000)
+let productCounterReady = false
 
 const categoryFolderAlias = {
   electronics: 'Electroincs'
+}
+
+function pickCategoryFolder(category) {
+  const candidates = getCategoryFolderCandidates(category)
+  for (const candidate of candidates) {
+    const candidatePath = path.join(assetBaseDir, candidate)
+    if (fs.existsSync(candidatePath)) {
+      return candidate
+    }
+  }
+  return candidates[0] || normalizeCategory(category) || 'uncategorized'
+}
+
+async function saveBase64Image(category, filename, base64DataUrl) {
+  const trimmedCategory = String(category || '').trim()
+  const trimmedFilename = String(filename || '').trim()
+  if (!trimmedCategory || !trimmedFilename || !base64DataUrl) return null
+
+  const [, encoded] = String(base64DataUrl).split(',')
+  const buffer = Buffer.from(encoded || '', 'base64')
+  if (!buffer.length) return null
+
+  const folder = pickCategoryFolder(trimmedCategory)
+  const folderPath = path.join(assetBaseDir, folder)
+  await fsp.mkdir(folderPath, { recursive: true })
+
+  const filePath = path.join(folderPath, trimmedFilename)
+  await fsp.writeFile(filePath, buffer)
+
+  return {
+    folder,
+    url: `${assetBaseUrl}/${encodeURI(folder)}/${encodeURI(trimmedFilename)}`
+  }
+}
+
+function toTitleCase(value) {
+  return String(value || '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ')
 }
 
 function listObjectNames(bucket, prefix) {
@@ -46,11 +94,15 @@ function getCategoryFolderCandidates(category) {
   const raw = String(category || '').trim()
   const normalized = normalizeCategory(category)
   const alias = categoryFolderAlias[normalized]
+  const titleCasedRaw = toTitleCase(raw)
+  const titleCasedNormalized = toTitleCase(normalized)
 
   return Array.from(new Set([
     raw,
     normalized,
-    alias
+    alias,
+    titleCasedRaw,
+    titleCasedNormalized
   ].filter(Boolean)))
 }
 
@@ -119,6 +171,50 @@ function getObjectKeyCandidatesFromProduct(product) {
   return Array.from(new Set(keysToTry))
 }
 
+function getLocalCategoryImages(category) {
+  const key = normalizeCategory(category)
+  const cached = localCategoryCache.get(key)
+  if (cached) return cached
+
+  const folders = getCategoryFolderCandidates(category)
+  const files = []
+
+  for (const folder of folders) {
+    const folderPath = path.join(assetBaseDir, folder)
+    if (!fs.existsSync(folderPath)) continue
+
+    try {
+      const entries = fs.readdirSync(folderPath, { withFileTypes: true })
+      for (const entry of entries) {
+        if (!entry.isFile()) continue
+        if (!imageExtPattern.test(entry.name)) continue
+        files.push({ folder, name: entry.name })
+      }
+    } catch (err) {
+      // skip folder read errors
+    }
+  }
+
+  localCategoryCache.set(key, files)
+  return files
+}
+
+function findLocalAssetForProduct(product) {
+  const filename = String(product?.image_filename || '').trim()
+  if (!filename) return null
+
+  const folders = getCategoryFolderCandidates(product?.category)
+  for (const folder of folders) {
+    const fullPath = path.join(assetBaseDir, folder, filename)
+    if (fs.existsSync(fullPath)) {
+      const url = `${assetBaseUrl}/${encodeURI(folder)}/${encodeURI(filename)}`
+      return url
+    }
+  }
+
+  return null
+}
+
 async function getCategoryImageKeys(category) {
   const trimmed = String(category || '').trim()
   const normalized = normalizeCategory(category)
@@ -144,7 +240,39 @@ async function getCategoryImageKeys(category) {
   return Array.from(new Set(allNames)).filter((name) => imageExtPattern.test(name))
 }
 
-app.get("/", async (req, res) => {
+async function ensureProductCounterSeeded() {
+  if (productCounterReady) return
+  try {
+    const maxProduct = await Product.findOne().sort({ product_id: -1 }).lean()
+    const current = await ProductCounter.findById('product_id')
+    const maxValue = maxProduct ? Number(maxProduct.product_id) : 0
+    const currentValue = current ? Number(current.seq) : 0
+    if (maxValue > currentValue) {
+      await ProductCounter.findByIdAndUpdate(
+        { _id: 'product_id' },
+        { $set: { seq: maxValue } },
+        { upsert: true }
+      )
+    }
+    productCounterReady = true
+  } catch (err) {
+    // If seeding fails, allow create to proceed; duplicate key will surface if counter is low.
+  }
+}
+
+async function reseedProductCounterFromMax() {
+  const maxProduct = await Product.findOne().sort({ product_id: -1 }).lean()
+  const maxValue = maxProduct ? Number(maxProduct.product_id) : 0
+  await ProductCounter.findByIdAndUpdate(
+    { _id: 'product_id' },
+    { $set: { seq: maxValue } },
+    { upsert: true }
+  )
+  productCounterReady = true
+}
+
+// List all products
+router.get("/", async (_req, res) => {
   try {
     const now = Date.now()
     if (productsResponseCache.data && productsResponseCache.expiresAt > now) {
@@ -197,7 +325,20 @@ app.get("/", async (req, res) => {
 
     const productsWithImage = products.map((product) => {
       const objectKey = resolvedKeyByProductId.get(String(product._id))
-      const imageUrl = objectKey ? presignedByKey.get(objectKey) : null
+      let imageUrl = objectKey ? presignedByKey.get(objectKey) : null
+
+      if (!imageUrl) {
+        imageUrl = findLocalAssetForProduct(product) || product.image_url || null
+      }
+
+      if (!imageUrl) {
+        const localImages = getLocalCategoryImages(product.category)
+        if (localImages.length) {
+          const pick = localImages[Math.floor(Math.random() * localImages.length)]
+          imageUrl = `${assetBaseUrl}/${encodeURI(pick.folder)}/${encodeURI(pick.name)}`
+        }
+      }
+
       return imageUrl ? { ...product, image_url: imageUrl } : product
     })
 
@@ -206,12 +347,12 @@ app.get("/", async (req, res) => {
 
     return res.json(productsWithImage)
   } catch (err) {
-    console.log(err)
+    console.error("Failed to get products", err);
     res.status(500).json({ error: "Failed to get products" });
   }
 });
 
-app.get('/category-images', async (req, res) => {
+router.get('/category-images', async (req, res) => {
   try {
     const raw = req.query.categories
     let categories = []
@@ -250,5 +391,62 @@ app.get('/category-images', async (req, res) => {
     res.status(500).json({ error: 'Failed to get category images' })
   }
 })
+// Create a new product
+router.post("/", async (req, res) => {
+  try {
+    await ensureProductCounterSeeded()
+    const { product_name, brand, category, price, rating = 0, stock = 0, image_url = "", image_filename = "", image_data = "" } = req.body;
 
-module.exports = app
+    if (!product_name || !brand || !category || price == null) {
+      return res.status(400).json({ error: "product_name, brand, category, and price are required" });
+    }
+
+    const payload = {
+      product_name: String(product_name).trim(),
+      brand: String(brand).trim(),
+      category: String(category).trim(),
+      price: Number(price) || 0,
+      rating: Number(rating) || 0,
+      stock: Number(stock) || 0,
+      image_url: image_url || "",
+      image_filename: image_filename || undefined,
+    }
+
+    if (image_data && payload.image_filename) {
+      try {
+        const saved = await saveBase64Image(payload.category, payload.image_filename, image_data)
+        if (saved?.url) {
+          payload.image_url = saved.url
+        }
+      } catch (err) {
+        // If the upload fails, continue with provided image_url
+        console.error('Failed to persist uploaded image', err)
+      }
+    }
+
+    let product = null
+    try {
+      product = await Product.create(payload)
+    } catch (err) {
+      if (err?.code === 11000 && err?.keyPattern?.product_id) {
+        await reseedProductCounterFromMax()
+        product = await Product.create(payload)
+      } else {
+        throw err
+      }
+    }
+
+    // Invalidate cached lists so new products and images appear immediately.
+    productsResponseCache.data = null
+    productsResponseCache.expiresAt = 0
+    presignedCache.clear()
+    localCategoryCache.clear()
+
+    res.status(201).json(product);
+  } catch (err) {
+    console.error("Failed to create product", err);
+    res.status(500).json({ error: "Failed to create product" });
+  }
+});
+
+module.exports = router;

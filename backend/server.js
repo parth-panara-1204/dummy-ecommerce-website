@@ -1,6 +1,7 @@
 const mongoose = require("mongoose")
 const express = require('express')
 const cors = require('cors')
+const path = require('path')
 const { connectProducer, sendEvent } = require('./kafkaProducer.js')
 
 const product_route = require('./routes/product-route.js')
@@ -12,7 +13,10 @@ const kafka_route = require('./routes/kafka-route.js')
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+// Allow image uploads via base64 data URLs from the admin form
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
+app.use('/assets', express.static(path.join(__dirname, '..', 'assets')));
 
 connectProducer()
 
@@ -43,6 +47,16 @@ mongoose.connect("mongodb://localhost:27017/e-commerce").then(async () => {
     await OrderCounter.findOneAndUpdate(
       { _id: 'order_id' },
       { $setOnInsert: { seq: maxOrder ? maxOrder.order_id : 0 } },
+      { upsert: true }
+    );
+
+    // Seed product_id counter from current max (only on first boot)
+    const Product = require('./models/products.js');
+    const { Counter: ProductCounter } = require('./models/products.js');
+    const maxProduct = await Product.findOne().sort({ product_id: -1 });
+    await ProductCounter.findOneAndUpdate(
+      { _id: 'product_id' },
+      { $setOnInsert: { seq: maxProduct ? maxProduct.product_id : 0 } },
       { upsert: true }
     );
 

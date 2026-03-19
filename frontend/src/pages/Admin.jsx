@@ -1,16 +1,92 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Nav from "../components/Nav";
 import API from "../api";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+
+// Lightweight WebSocket hook with reconnect and pause support
+function useLiveWebSocket({ url, onMessage, paused }) {
+  const [status, setStatus] = useState("disconnected");
+  const wsRef = useRef(null);
+  const retryRef = useRef(null);
+
+  useEffect(() => {
+    if (paused) {
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      setStatus("paused");
+      return () => {};
+    }
+
+    let shouldReconnect = true;
+
+    const connect = () => {
+      setStatus("connecting");
+      const ws = new WebSocket(url);
+      wsRef.current = ws;
+
+      ws.onopen = () => setStatus("connected");
+      ws.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          onMessage?.(payload);
+        } catch (err) {
+          console.error("WS message parse error", err);
+        }
+      };
+      ws.onerror = () => ws.close();
+      ws.onclose = () => {
+        setStatus("disconnected");
+        wsRef.current = null;
+        if (shouldReconnect) {
+          retryRef.current = setTimeout(connect, 2000);
+        }
+      };
+    };
+
+    connect();
+
+    return () => {
+      shouldReconnect = false;
+      if (wsRef.current) wsRef.current.close();
+      if (retryRef.current) clearTimeout(retryRef.current);
+    };
+  }, [url, onMessage, paused]);
+
+  return status;
+}
 
 export default function Admin() {
   const navigate = useNavigate();
+  const WS_ENDPOINT = "ws://localhost:8080/stream";
+  const revenueSpikeThreshold = 50000;
+  const kafkaLagThreshold = 500;
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [users, setUsers] = useState([]);
   const [error, setError] = useState("");
+  const [liveKpis, setLiveKpis] = useState({ revenue: 0, ordersPerSec: 0, users: 0, eventsPerSec: 0 });
+  const [revenuePoints, setRevenuePoints] = useState([]);
+  const [categoryCounts, setCategoryCounts] = useState({});
+  const [health, setHealth] = useState({ kafkaLag: 0, messagesPerSec: 0, sparkBatchTime: 0 });
+  const [eventsFeed, setEventsFeed] = useState([]);
+  const [alerts, setAlerts] = useState([]);
+  const [paused, setPaused] = useState(false);
+  const lastRevenueRef = useRef(0);
 
   const isAdmin = useMemo(() => {
     if (!user) return false;
@@ -101,25 +177,12 @@ export default function Admin() {
     return [...users].slice(0, 6);
   }, [users]);
 
-  const revenueSeries = useMemo(() => {
-    const series = [...orders]
-      .sort((a, b) => new Date(a.created_at || a.order_date || 0) - new Date(b.created_at || b.order_date || 0))
-      .slice(-12)
-      .map((order, idx) => ({
-        x: idx,
-        y: Number(order.total_amount ?? order.amount ?? 0) || 0,
-      }));
-
-    if (series.length === 0) return [];
-    const maxY = Math.max(...series.map((p) => p.y)) || 1;
-    const width = 220;
-    const height = 80;
-    return series.map((p, idx) => {
-      const x = (idx / Math.max(1, series.length - 1)) * width;
-      const y = height - (p.y / maxY) * height;
-      return `${x},${y}`;
-    });
-  }, [orders]);
+  const liveTopCategories = useMemo(() => {
+    return Object.entries(categoryCounts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+  }, [categoryCounts]);
 
   const formatINRShort = (value) => {
     const num = Number(value) || 0;
@@ -132,6 +195,66 @@ export default function Admin() {
     return `₹${num.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
+  const pushAlert = useCallback((title, level = "info") => {
+    setAlerts((prev) => [{ id: Date.now() + Math.random(), title, level }, ...prev].slice(0, 6));
+  }, []);
+
+  const handleStreamMessage = useCallback(
+    (msg) => {
+      const ts = msg.timestamp ? msg.timestamp * 1000 : Date.now();
+
+      setLiveKpis((prev) => ({
+        revenue: msg.revenue ?? prev.revenue,
+        ordersPerSec: msg.orders ?? prev.ordersPerSec,
+        users: msg.users ?? prev.users,
+        eventsPerSec: msg.events ?? prev.eventsPerSec,
+      }));
+
+      setRevenuePoints((prev) => {
+        const nextPoint = { time: ts, revenue: msg.revenue ?? prev[prev.length - 1]?.revenue ?? 0 };
+        const next = [...prev, nextPoint];
+        return next.slice(-100);
+      });
+
+      if (msg.category) {
+        setCategoryCounts((prev) => {
+          const next = { ...prev };
+          next[msg.category] = (next[msg.category] || 0) + 1;
+          return next;
+        });
+      }
+
+      setHealth((prev) => ({
+        kafkaLag: msg.kafkaLag ?? prev.kafkaLag,
+        messagesPerSec: msg.messagesPerSec ?? prev.messagesPerSec,
+        sparkBatchTime: msg.sparkBatchTime ?? msg.batchTime ?? prev.sparkBatchTime,
+      }));
+
+      if (msg.order_id || msg.user_id) {
+        setEventsFeed((prev) => [{ order_id: msg.order_id, user_id: msg.user_id, amount: msg.amount ?? msg.revenue ?? 0, timestamp: ts }, ...prev].slice(0, 10));
+      }
+
+      const prevRevenue = lastRevenueRef.current || 0;
+      if (msg.revenue && msg.revenue - prevRevenue > revenueSpikeThreshold) {
+        pushAlert(`Revenue spike detected (+₹${(msg.revenue - prevRevenue).toFixed(0)})`, "warn");
+      }
+      lastRevenueRef.current = msg.revenue ?? lastRevenueRef.current;
+
+      if ((msg.kafkaLag ?? 0) > kafkaLagThreshold) {
+        pushAlert(`High Kafka lag: ${msg.kafkaLag}`, "error");
+      }
+    },
+    [kafkaLagThreshold, pushAlert, revenueSpikeThreshold]
+  );
+
+  const connectionStatus = useLiveWebSocket({ url: WS_ENDPOINT, onMessage: handleStreamMessage, paused });
+  const togglePause = () => setPaused((p) => !p);
+  const statusColor = connectionStatus === "connected" ? "#16a34a" : connectionStatus === "connecting" ? "#f59e0b" : connectionStatus === "paused" ? "#6b7280" : "#dc2626";
+
+  const liveLineData = useMemo(
+    () => revenuePoints.map((p) => ({ ...p, label: new Date(p.time).toLocaleTimeString() })),
+    [revenuePoints]
+  );
   const topProducts = useMemo(() => {
     return [...products]
       .sort((a, b) => (Number(b.rating) || 0) - (Number(a.rating) || 0))
@@ -177,6 +300,215 @@ export default function Admin() {
             <div className="loading">Loading dashboard...</div>
           ) : (
             <>
+              <div className="panel" style={{ marginBottom: 12 }}>
+                <div className="panel-header" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span
+                      aria-label="connection-status"
+                      style={{
+                        display: "inline-block",
+                        width: 10,
+                        height: 10,
+                        borderRadius: "50%",
+                        background: statusColor,
+                      }}
+                    />
+                    <div>
+                      <h3>Live Stream</h3>
+                      <span className="panel-meta">Status: {connectionStatus}</span>
+                    </div>
+                  </div>
+                  <button className="btn" onClick={togglePause}>{paused ? "Resume" : "Pause"} Stream</button>
+                </div>
+                <div className="kpi-grid">
+                  <div className="stat-card">
+                    <p className="stat-label">Revenue</p>
+                    <p className="stat-value">{formatINRShort(liveKpis.revenue)}</p>
+                    <p className="stat-meta">Live total</p>
+                  </div>
+                  <div className="stat-card">
+                    <p className="stat-label">Orders / sec</p>
+                    <p className="stat-value">{liveKpis.ordersPerSec.toFixed(1)}</p>
+                    <p className="stat-meta">Incoming</p>
+                  </div>
+                  <div className="stat-card">
+                    <p className="stat-label">Active Users</p>
+                    <p className="stat-value">{liveKpis.users}</p>
+                    <p className="stat-meta">Concurrent</p>
+                  </div>
+                  <div className="stat-card">
+                    <p className="stat-label">Events / sec</p>
+                    <p className="stat-value">{liveKpis.eventsPerSec.toFixed(1)}</p>
+                    <p className="stat-meta">Throughput</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="dashboard-layout">
+                <div className="panel">
+                  <div className="panel-header" style={{ justifyContent: "space-between" }}>
+                    <h3>Revenue (Live)</h3>
+                    <span className="panel-meta">Last 100 points</span>
+                  </div>
+                  {liveLineData.length === 0 ? (
+                    <p className="muted">Waiting for live data...</p>
+                  ) : (
+                    <div style={{ width: "100%", height: 240 }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={liveLineData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="label" hide tick={false} />
+                          <YAxis hide tick={false} />
+                          <Tooltip formatter={(value) => formatINRShort(value)} labelFormatter={() => "Live"} />
+                          <Line type="monotone" dataKey="revenue" stroke="#2563eb" dot={false} isAnimationActive />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                </div>
+
+                <div className="panel">
+                  <div className="panel-header" style={{ justifyContent: "space-between" }}>
+                    <h3>Top Categories (Live)</h3>
+                    <span className="panel-meta">Sliding window</span>
+                  </div>
+                  {liveTopCategories.length === 0 ? (
+                    <p className="muted">Waiting for category signals...</p>
+                  ) : (
+                    <div style={{ width: "100%", height: 240 }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={liveTopCategories} margin={{ top: 10, right: 10, left: 0, bottom: 10 }}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="name" />
+                          <YAxis allowDecimals={false} />
+                          <Tooltip />
+                          <Bar dataKey="count" fill="#2563eb" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="dashboard-layout">
+                <div className="panel">
+                  <div className="panel-header" style={{ justifyContent: "space-between" }}>
+                    <h3>System Health</h3>
+                    <span className="panel-meta">Kafka & Spark</span>
+                  </div>
+                  <div className="snapshot-grid">
+                    <div>
+                      <p className="stat-label">Kafka Lag</p>
+                      <p className="stat-value" style={{ color: health.kafkaLag > kafkaLagThreshold ? "#dc2626" : "inherit" }}>
+                        {health.kafkaLag}
+                      </p>
+                      <p className="stat-meta">Partitions delay</p>
+                    </div>
+                    <div>
+                      <p className="stat-label">Messages / sec</p>
+                      <p className="stat-value">{health.messagesPerSec}</p>
+                      <p className="stat-meta">Broker throughput</p>
+                    </div>
+                    <div>
+                      <p className="stat-label">Spark Batch (ms)</p>
+                      <p className="stat-value">{health.sparkBatchTime}</p>
+                      <p className="stat-meta">Processing time</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="panel">
+                  <div className="panel-header" style={{ justifyContent: "space-between" }}>
+                    <h3>Alerts</h3>
+                    <span className="panel-meta">Auto detected</span>
+                  </div>
+                  {alerts.length === 0 ? (
+                    <p className="muted">No active alerts.</p>
+                  ) : (
+                    <ul style={{ listStyle: "none", paddingLeft: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+                      {alerts.map((a) => (
+                        <li key={a.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span
+                            style={{
+                              width: 10,
+                              height: 10,
+                              borderRadius: "50%",
+                              background: a.level === "error" ? "#dc2626" : a.level === "warn" ? "#f59e0b" : "#2563eb",
+                              flexShrink: 0,
+                            }}
+                          />
+                          <span>{a.title}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+
+              <div className="dashboard-layout">
+                <div className="panel">
+                  <div className="panel-header" style={{ justifyContent: "space-between" }}>
+                    <h3>Live Event Feed</h3>
+                    <span className="panel-meta">Latest 10</span>
+                  </div>
+                  {eventsFeed.length === 0 ? (
+                    <p className="muted">Waiting for events...</p>
+                  ) : (
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Order</th>
+                          <th>User</th>
+                          <th>Amount</th>
+                          <th>Time</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {eventsFeed.map((evt, idx) => (
+                          <tr key={`${evt.order_id || idx}-${evt.timestamp}`}>
+                            <td>{evt.order_id || "-"}</td>
+                            <td>{evt.user_id || "-"}</td>
+                            <td>{formatINRShort(evt.amount)}</td>
+                            <td>{new Date(evt.timestamp).toLocaleTimeString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+
+                <div className="panel">
+                  <div className="panel-header" style={{ justifyContent: "space-between" }}>
+                    <h3>Revenue Snapshot</h3>
+                    <span className="panel-meta">Using total_amount/amount</span>
+                  </div>
+                  <div className="snapshot-grid">
+                    <div>
+                      <p className="stat-label">Total Revenue</p>
+                      <p className="stat-value">{formatINRShort(totalRevenue)}</p>
+                    </div>
+                    <div>
+                      <p className="stat-label">Orders</p>
+                      <p className="stat-value">{orders.length}</p>
+                    </div>
+                    <div className="sparkline-card">
+                      <p className="stat-label">Recent Trend</p>
+                      {liveLineData.length === 0 ? (
+                        <p className="muted">No data</p>
+                      ) : (
+                        <div className="sparkline">
+                          <ResponsiveContainer width="100%" height={80}>
+                            <LineChart data={liveLineData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                              <Line type="monotone" dataKey="revenue" stroke="#2563eb" dot={false} isAnimationActive={false} />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="admin-grid">
                 <div className="stat-card">
                   <p className="stat-label">Products</p>
@@ -225,71 +557,6 @@ export default function Admin() {
                   <p className="stat-label">Top Brand</p>
                   <p className="stat-value">{topBrandName}</p>
                   <p className="stat-meta">By SKU count</p>
-                </div>
-              </div>
-
-              <div className="dashboard-layout">
-                <div className="panel">
-                  <div className="panel-header">
-                    <h3>Revenue Snapshot</h3>
-                    <span className="panel-meta">Using total_amount/amount</span>
-                  </div>
-                  <div className="snapshot-grid">
-                    <div>
-                      <p className="stat-label">Total Revenue</p>
-                      <p className="stat-value">{formatINRShort(totalRevenue)}</p>
-                    </div>
-                    <div>
-                      <p className="stat-label">Orders</p>
-                      <p className="stat-value">{orders.length}</p>
-                    </div>
-                    <div>
-                      <p className="stat-label">Avg Order</p>
-                      <p className="stat-value">{formatINRShort(orders.length ? totalRevenue / orders.length : 0)}</p>
-                    </div>
-                    <div className="sparkline-card">
-                      <p className="stat-label">Recent Trend</p>
-                      {revenueSeries.length === 0 ? (
-                        <p className="muted">No data</p>
-                      ) : (
-                        <svg className="sparkline" viewBox="0 0 220 80" preserveAspectRatio="none">
-                          <polyline
-                            fill="none"
-                            stroke="#2563eb"
-                            strokeWidth="2"
-                            points={revenueSeries.join(" ")}
-                          />
-                        </svg>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="panel">
-                  <div className="panel-header">
-                    <h3>Top Categories</h3>
-                    <span className="panel-meta">Units by count</span>
-                  </div>
-                  {topCategories.length === 0 ? (
-                    <p className="muted">No categories found.</p>
-                  ) : (
-                    <table className="data-table">
-                      <thead>
-                        <tr>
-                          <th>Category</th>
-                          <th>Items</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {topCategories.map((cat) => (
-                          <tr key={cat.name}>
-                            <td>{cat.name}</td>
-                            <td>{cat.count}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
                 </div>
               </div>
 

@@ -736,11 +736,15 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  align-items: flex-start;
+  gap: 8px;
+  padding-top: 4px;
 }
 
 .sparkline {
   width: 100%;
   height: 80px;
+  margin-top: 4px;
 }
 
 .product-form {
