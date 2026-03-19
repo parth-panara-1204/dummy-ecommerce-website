@@ -24,6 +24,9 @@ export default function Nav() {
   return (
     <nav className="nav-bar">
       <Link to="/" className="nav-item">Products</Link>
+      {user && !isAdmin && (
+        <Link to="/my-orders" className="nav-item">My Orders</Link>
+      )}
       {!isAdmin && (
         <Link to="/cart" className="nav-item">
           Cart {itemCount > 0 && `(${itemCount})`}

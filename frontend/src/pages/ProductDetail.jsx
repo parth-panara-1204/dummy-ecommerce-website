@@ -169,6 +169,8 @@ export default function ProductDetail() {
     );
   }
 
+  const detailImageSrc = product.image_url;
+
   return (
     <div className="app">
       <Nav />
@@ -180,7 +182,11 @@ export default function ProductDetail() {
           
           <div className="product-detail">
             <div className="product-detail-image">
-              {product.category}
+              {detailImageSrc ? (
+                <img src={detailImageSrc} alt={product.product_name} className="product-detail-image-content" />
+              ) : (
+                product.category
+              )}
             </div>
             
             <div className="product-detail-info">

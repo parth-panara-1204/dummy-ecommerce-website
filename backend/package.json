@@ -3,8 +3,10 @@
     "axios": "^1.13.4",
     "body-parser": "^2.2.2",
     "cors": "^2.8.6",
+    "csv-parser": "^3.2.0",
     "express": "^5.2.1",
     "kafkajs": "^2.2.4",
+    "minio": "^8.0.7",
     "mongoose": "^9.1.6",
     "nodemon": "^1.0.2"
   }

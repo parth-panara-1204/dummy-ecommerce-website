@@ -1,6 +1,8 @@
 const mongoose = require('mongoose');
 const product = require('./models/products.js');
-const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
+const csv = require('csv-parser');
 
 mongoose.connect("mongodb://localhost:27017/e-commerce").then(() => {
     console.log('connected to Mongodb');
@@ -14,16 +16,27 @@ async function get_data() {
     await product.deleteMany({});
     console.log('Cleared existing products');
 
-    const response = await axios.get("https://dummyjson.com/products");
+    const csvPath = path.join(__dirname, '..', 'ecommerce_dataset', 'products.csv');
 
-    const products = response.data.products.map(p => ({
-      product_id: p.id,
-      product_name: p.title,
-      category: p.category,
-      brand: p.brand,
-      price: p.price,
-      rating: p.rating
-    }));
+    const products = await new Promise((resolve, reject) => {
+      const records = [];
+
+      fs.createReadStream(csvPath)
+        .pipe(csv())
+        .on('data', (row) => {
+          records.push({
+            product_id: Number(row.product_id),
+            product_name: row.product_name,
+            category: row.category,
+            brand: row.brand,
+            price: Number(row.price),
+            rating: Number(row.rating),
+            image_filename: row.image_filename || undefined
+          });
+        })
+        .on('end', () => resolve(records))
+        .on('error', (err) => reject(err));
+    });
 
     await product.insertMany(products);
 
