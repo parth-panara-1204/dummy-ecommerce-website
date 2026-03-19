@@ -482,27 +482,34 @@ export default function Admin() {
                     <h3>Revenue Snapshot</h3>
                     <span className="panel-meta">Using total_amount/amount</span>
                   </div>
-                  <div className="snapshot-grid">
-                    <div>
-                      <p className="stat-label">Total Revenue</p>
-                      <p className="stat-value">{formatINRShort(totalRevenue)}</p>
+                  <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+                    <div className="snapshot-grid" style={{ marginBottom: "16px" }}>
+                      <div>
+                        <p className="stat-label">Total Revenue</p>
+                        <p className="stat-value">{formatINRShort(totalRevenue)}</p>
+                      </div>
+                      <div>
+                        <p className="stat-label">Orders</p>
+                        <p className="stat-value">{orders.length}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="stat-label">Orders</p>
-                      <p className="stat-value">{orders.length}</p>
-                    </div>
-                    <div className="sparkline-card">
-                      <p className="stat-label">Recent Trend</p>
+                    <div style={{ flex: 1, minHeight: "180px" }}>
+                      <p className="stat-label" style={{ marginBottom: "8px" }}>Recent Trend</p>
                       {liveLineData.length === 0 ? (
                         <p className="muted">No data</p>
                       ) : (
-                        <div className="sparkline">
-                          <ResponsiveContainer width="100%" height={80}>
-                            <LineChart data={liveLineData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                              <Line type="monotone" dataKey="revenue" stroke="#2563eb" dot={false} isAnimationActive={false} />
-                            </LineChart>
-                          </ResponsiveContainer>
-                        </div>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={liveLineData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+                            <Line 
+                              type="monotone" 
+                              dataKey="revenue" 
+                              stroke="#2563eb" 
+                              strokeWidth={2}
+                              dot={false} 
+                              isAnimationActive={false} 
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
                       )}
                     </div>
                   </div>

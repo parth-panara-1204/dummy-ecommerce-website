@@ -22,15 +22,14 @@ const productSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-productSchema.pre("save", async function (next) {
-  if (this.product_id != null) return next();
+productSchema.pre("save", async function () {
+  if (this.product_id != null) return;
   const counter = await Counter.findByIdAndUpdate(
     { _id: "product_id" },
     { $inc: { seq: 1 } },
     { new: true, upsert: true }
   );
   this.product_id = counter.seq;
-  next();
 });
 
 const Product = mongoose.model("product", productSchema);

@@ -395,7 +395,7 @@ router.get('/category-images', async (req, res) => {
 router.post("/", async (req, res) => {
   try {
     await ensureProductCounterSeeded()
-    const { product_name, brand, category, price, rating = 0, stock = 0, image_url = "", image_filename = "", image_data = "" } = req.body;
+    const { product_name, brand, category, price, rating = 0, stock = 0, image_filename = "", image_data = "" } = req.body;
 
     if (!product_name || !brand || !category || price == null) {
       return res.status(400).json({ error: "product_name, brand, category, and price are required" });
@@ -408,10 +408,11 @@ router.post("/", async (req, res) => {
       price: Number(price) || 0,
       rating: Number(rating) || 0,
       stock: Number(stock) || 0,
-      image_url: image_url || "",
+      image_url: "",
       image_filename: image_filename || undefined,
     }
 
+    // Handle image upload
     if (image_data && payload.image_filename) {
       try {
         const saved = await saveBase64Image(payload.category, payload.image_filename, image_data)
@@ -419,8 +420,8 @@ router.post("/", async (req, res) => {
           payload.image_url = saved.url
         }
       } catch (err) {
-        // If the upload fails, continue with provided image_url
-        console.error('Failed to persist uploaded image', err)
+        console.error('Failed to persist uploaded image:', err)
+        return res.status(500).json({ error: "Failed to save image", details: err.message });
       }
     }
 
@@ -432,7 +433,8 @@ router.post("/", async (req, res) => {
         await reseedProductCounterFromMax()
         product = await Product.create(payload)
       } else {
-        throw err
+        console.error('Database error creating product:', err)
+        return res.status(500).json({ error: "Database error", details: err.message });
       }
     }
 
@@ -444,8 +446,8 @@ router.post("/", async (req, res) => {
 
     res.status(201).json(product);
   } catch (err) {
-    console.error("Failed to create product", err);
-    res.status(500).json({ error: "Failed to create product" });
+    console.error("Failed to create product:", err);
+    res.status(500).json({ error: "Failed to create product", details: err.message });
   }
 });
 

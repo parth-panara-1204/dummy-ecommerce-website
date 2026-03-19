@@ -13,7 +13,6 @@ export default function AddProduct() {
     category: "",
     price: "",
     stock: "",
-    image_url: "",
     image_filename: ""
   });
   const [imageData, setImageData] = useState("");
@@ -55,7 +54,7 @@ export default function AddProduct() {
     if (!file) {
       setImageData("");
       setPreview("");
-      setProductForm((p) => ({ ...p, image_url: "", image_filename: "" }));
+      setProductForm((p) => ({ ...p, image_filename: "" }));
       return;
     }
     const reader = new FileReader();
@@ -79,20 +78,20 @@ export default function AddProduct() {
         category: productForm.category.trim(),
         price: Number(productForm.price) || 0,
         stock: Number(productForm.stock) || 0,
-        image_url: productForm.image_filename ? "" : productForm.image_url.trim(),
         image_filename: productForm.image_filename.trim(),
         image_data: imageData,
       };
 
       const res = await API.post("/products", payload);
       setMessage(`Product created (id: ${res.data?._id || res.data?.product_id || "new"}).`);
-      setProductForm({ product_name: "", brand: "", category: "", price: "", stock: "", image_url: "", image_filename: "" });
+      setProductForm({ product_name: "", brand: "", category: "", price: "", stock: "", image_filename: "" });
       setImageData("");
       setPreview("");
       setTimeout(() => navigate("/admin"), 1200);
     } catch (err) {
       console.error("Create product error", err);
-      setMessage("Failed to create product. Check backend.");
+      const errorMsg = err.response?.data?.details || err.response?.data?.error || "Failed to create product. Check backend.";
+      setMessage(errorMsg);
     } finally {
       setSubmitting(false);
     }
@@ -160,10 +159,6 @@ export default function AddProduct() {
               <div className="form-group">
                 <label htmlFor="p-stock">Stock</label>
                 <input id="p-stock" type="number" min="0" step="1" className="form-input" value={productForm.stock} onChange={(e) => setProductForm({ ...productForm, stock: e.target.value })} />
-              </div>
-              <div className="form-group">
-                <label htmlFor="p-image-url">Image URL (auto-set from upload)</label>
-                <input id="p-image-url" className="form-input" value={productForm.image_url} onChange={(e) => setProductForm({ ...productForm, image_url: e.target.value })} placeholder="Auto-generated from file" />
               </div>
               <div className="form-group">
                 <label htmlFor="p-image-file">Upload Image</label>
