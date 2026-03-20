@@ -12,9 +12,8 @@ export default function AddProduct() {
     brand: "",
     category: "",
     price: "",
-    rating: "0",
     stock: "",
-    image_url: ""
+    image_filename: ""
   });
   const [imageData, setImageData] = useState("");
   const [preview, setPreview] = useState("");
@@ -55,15 +54,15 @@ export default function AddProduct() {
     if (!file) {
       setImageData("");
       setPreview("");
-      setProductForm((p) => ({ ...p, image_url: "" }));
+      setProductForm((p) => ({ ...p, image_filename: "" }));
       return;
     }
     const reader = new FileReader();
-    reader.onloadend = () => {
-      const dataUrl = reader.result || "";
-      setImageData(dataUrl);
-      setPreview(dataUrl);
-      setProductForm((p) => ({ ...p, image_url: dataUrl })); // auto-generate image_url from upload
+    reader.onload = () => {
+      const result = reader.result || "";
+      setImageData(String(result));
+      setPreview(String(result));
+      setProductForm((p) => ({ ...p, image_filename: file.name }));
     };
     reader.readAsDataURL(file);
   };
@@ -78,20 +77,21 @@ export default function AddProduct() {
         brand: productForm.brand.trim(),
         category: productForm.category.trim(),
         price: Number(productForm.price) || 0,
-        rating: Number(productForm.rating) || 0,
         stock: Number(productForm.stock) || 0,
-        image_url: imageData || productForm.image_url.trim(),
+        image_filename: productForm.image_filename.trim(),
+        image_data: imageData,
       };
 
       const res = await API.post("/products", payload);
       setMessage(`Product created (id: ${res.data?._id || res.data?.product_id || "new"}).`);
-      setProductForm({ product_name: "", brand: "", category: "", price: "", rating: "0", stock: "", image_url: "" });
+      setProductForm({ product_name: "", brand: "", category: "", price: "", stock: "", image_filename: "" });
       setImageData("");
       setPreview("");
       setTimeout(() => navigate("/admin"), 1200);
     } catch (err) {
       console.error("Create product error", err);
-      setMessage("Failed to create product. Check backend.");
+      const errorMsg = err.response?.data?.details || err.response?.data?.error || "Failed to create product. Check backend.";
+      setMessage(errorMsg);
     } finally {
       setSubmitting(false);
     }
@@ -157,16 +157,8 @@ export default function AddProduct() {
                 <input id="p-price" type="number" min="0" step="0.01" className="form-input" value={productForm.price} onChange={(e) => setProductForm({ ...productForm, price: e.target.value })} required />
               </div>
               <div className="form-group">
-                <label htmlFor="p-rating">Rating</label>
-                <input id="p-rating" type="number" min="0" max="5" step="0.1" className="form-input" value={productForm.rating} onChange={(e) => setProductForm({ ...productForm, rating: e.target.value })} />
-              </div>
-              <div className="form-group">
                 <label htmlFor="p-stock">Stock</label>
                 <input id="p-stock" type="number" min="0" step="1" className="form-input" value={productForm.stock} onChange={(e) => setProductForm({ ...productForm, stock: e.target.value })} />
-              </div>
-              <div className="form-group">
-                <label htmlFor="p-image-url">Image URL (auto-set from upload)</label>
-                <input id="p-image-url" className="form-input" value={productForm.image_url} onChange={(e) => setProductForm({ ...productForm, image_url: e.target.value })} placeholder="Auto-generated from file" />
               </div>
               <div className="form-group">
                 <label htmlFor="p-image-file">Upload Image</label>
