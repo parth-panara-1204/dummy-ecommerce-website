@@ -74,12 +74,33 @@ npm run dev       # Start dev server on port 5173
 - `GET /reviews/product/:productId` - Get reviews for specific product
 - `POST /reviews` - Submit new review
 
+### Review Sentiment (MinIO)
+- `GET /review-sentiment` - Get latest sentiment-tagged reviews from MinIO stream output
+- `GET /review-sentiment/summary` - Get positive/negative sentiment summary
+
 ### Events
 - `GET /events` - Get all tracked events
 - `POST /events` - Track new event
 
 ### WebSocket
 - `ws://localhost:8080/stream` - Live data stream for admin dashboard
+
+## Spark Review Sentiment Pipeline
+
+Start the streaming job (Kafka -> MinIO):
+
+```bash
+spark-submit \
+	--packages org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.0,org.apache.hadoop:hadoop-aws:3.4.1,com.amazonaws:aws-java-sdk-bundle:1.12.262 \
+	spark/stream_orders.py
+```
+
+What happens for new reviews:
+1. Review is saved in MongoDB.
+2. Backend emits a `review` event to Kafka including `reviewText` + `rating`.
+3. Spark applies rule-based sentiment using rating: `> 3` = `positive`, `< 3` = `negative`, `= 3` = `neutral`.
+4. Tagged rows are written to MinIO at `s3a://datalake/review-sentiment/`.
+5. Admin dashboard reads summary + latest tagged rows through backend APIs.
 
 ## Database Collections
 

@@ -1,5 +1,6 @@
 const express = require('express');
 const Review = require('../models/reviews.js');
+const { sendEvent } = require('../kafkaProducer.js');
 
 const app = express();
 app.use(express.json());
@@ -41,6 +42,18 @@ app.post('/', async (req, res) => {
     });
     
     await newReview.save();
+
+    // Send review event for Spark sentiment scoring.
+    await sendEvent('clickStream', {
+      userId: String(newReview.user_id),
+      productId: String(newReview.product_id),
+      eventType: 'review',
+      timestamp: newReview.review_date.toISOString(),
+      reviewId: String(newReview.review_id),
+      rating: Number(newReview.rating),
+      reviewText: newReview.review_text,
+    });
+
     res.status(201).json(newReview);
   } catch (err) {
     console.log(err);

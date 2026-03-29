@@ -88,6 +88,9 @@ export default function Admin() {
   const [eventsFeed, setEventsFeed] = useState([]);
   const [archivedEvents, setArchivedEvents] = useState([]);
   const [archivedEventsLoading, setArchivedEventsLoading] = useState(false);
+  const [sentimentSummary, setSentimentSummary] = useState({ total: 0, positive: 0, negative: 0, neutral: 0, positiveRate: 0, negativeRate: 0, neutralRate: 0 });
+  const [recentSentimentReviews, setRecentSentimentReviews] = useState([]);
+  const [sentimentLoading, setSentimentLoading] = useState(false);
   const [alerts, setAlerts] = useState([]);
   const [paused, setPaused] = useState(false);
   const lastRevenueRef = useRef(0);
@@ -147,6 +150,34 @@ export default function Admin() {
     };
 
     fetchArchivedEvents();
+  }, [user, isAdmin]);
+
+  useEffect(() => {
+    if (!user || !isAdmin) return;
+
+    let intervalId;
+
+    const fetchSentimentData = async () => {
+      setSentimentLoading(true);
+      try {
+        const [summaryRes, recordsRes] = await Promise.all([
+          API.get('/review-sentiment/summary?limit=3000'),
+          API.get('/review-sentiment?limit=8'),
+        ]);
+
+        setSentimentSummary(summaryRes.data || { total: 0, positive: 0, negative: 0, neutral: 0, positiveRate: 0, negativeRate: 0, neutralRate: 0 });
+        setRecentSentimentReviews(recordsRes.data?.records || []);
+      } catch (err) {
+        console.error('Failed to fetch review sentiment:', err);
+      } finally {
+        setSentimentLoading(false);
+      }
+    };
+
+    fetchSentimentData();
+    intervalId = setInterval(fetchSentimentData, 15000);
+
+    return () => clearInterval(intervalId);
   }, [user, isAdmin]);
 
   const totalRevenue = useMemo(
@@ -458,6 +489,74 @@ export default function Admin() {
                         </li>
                       ))}
                     </ul>
+                  )}
+                </div>
+              </div>
+
+              <div className="dashboard-layout">
+                <div className="panel">
+                  <div className="panel-header" style={{ justifyContent: "space-between" }}>
+                    <h3>Review Sentiment</h3>
+                    <span className="panel-meta">From MinIO inference output</span>
+                  </div>
+                  {sentimentLoading && sentimentSummary.total === 0 ? (
+                    <p className="muted">Loading sentiment summary...</p>
+                  ) : (
+                    <div className="snapshot-grid">
+                      <div>
+                        <p className="stat-label">Reviews Scored</p>
+                        <p className="stat-value">{sentimentSummary.total || 0}</p>
+                        <p className="stat-meta">Sampled from stream output</p>
+                      </div>
+                      <div>
+                        <p className="stat-label">Positive</p>
+                        <p className="stat-value" style={{ color: "#16a34a" }}>{sentimentSummary.positive || 0}</p>
+                        <p className="stat-meta">{((sentimentSummary.positiveRate || 0) * 100).toFixed(1)}%</p>
+                      </div>
+                      <div>
+                        <p className="stat-label">Negative</p>
+                        <p className="stat-value" style={{ color: "#dc2626" }}>{sentimentSummary.negative || 0}</p>
+                        <p className="stat-meta">{((sentimentSummary.negativeRate || 0) * 100).toFixed(1)}%</p>
+                      </div>
+                      <div>
+                        <p className="stat-label">Neutral</p>
+                        <p className="stat-value" style={{ color: "#6b7280" }}>{sentimentSummary.neutral || 0}</p>
+                        <p className="stat-meta">{((sentimentSummary.neutralRate || 0) * 100).toFixed(1)}%</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="panel">
+                  <div className="panel-header" style={{ justifyContent: "space-between" }}>
+                    <h3>Latest Tagged Reviews</h3>
+                    <span className="panel-meta">Sentiment model output</span>
+                  </div>
+                  {recentSentimentReviews.length === 0 ? (
+                    <p className="muted">No sentiment-tagged reviews yet.</p>
+                  ) : (
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Review</th>
+                          <th>Product</th>
+                          <th>Rating</th>
+                          <th>Sentiment</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {recentSentimentReviews.map((row, idx) => (
+                          <tr key={`sentiment-${row.review_id || idx}`}>
+                            <td>{row.review_text ? String(row.review_text).slice(0, 60) : '-'}</td>
+                            <td>{row.product_id || '-'}</td>
+                            <td>{row.rating ?? '-'}</td>
+                            <td style={{ color: row.sentiment === 'positive' ? '#16a34a' : row.sentiment === 'negative' ? '#dc2626' : '#6b7280', fontWeight: 600 }}>
+                              {row.sentiment || '-'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   )}
                 </div>
               </div>

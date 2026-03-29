@@ -11,6 +11,7 @@ const order_items  = require('./routes/order-item-route.js')
 const review_route = require('./routes/review-route.js')
 const kafka_route = require('./routes/kafka-route.js')
 const archived_events_route = require('./routes/archived-events-route.js')
+const review_sentiment_route = require('./routes/review-sentiment-route.js')
 
 const app = express();
 app.use(cors());
@@ -28,6 +29,7 @@ app.use('/order_items', order_items)
 app.use('/reviews', review_route)
 app.use('/events', kafka_route)
 app.use('/archived-events', archived_events_route)
+app.use('/review-sentiment', review_sentiment_route)
 
 mongoose.connect("mongodb://localhost:27017/e-commerce").then(async () => {
     console.log('connected to Mongodb');
