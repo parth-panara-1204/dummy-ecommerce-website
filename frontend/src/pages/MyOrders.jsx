@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Nav from "../components/Nav";
 import API from "../api";
+import { getStoredUser } from "../utils/authStorage";
 
 export default function MyOrders() {
   const navigate = useNavigate();
@@ -16,7 +17,7 @@ export default function MyOrders() {
   }, [user]);
 
   useEffect(() => {
-    const userData = sessionStorage.getItem("user") || localStorage.getItem("user");
+    const userData = getStoredUser();
 
     if (!userData) {
       navigate("/login", { state: { from: "/my-orders" } });
@@ -25,7 +26,7 @@ export default function MyOrders() {
 
     let parsedUser = null;
     try {
-      parsedUser = JSON.parse(userData);
+      parsedUser = userData;
       setUser(parsedUser);
     } catch (err) {
       navigate("/login", { state: { from: "/my-orders" } });

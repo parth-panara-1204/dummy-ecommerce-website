@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
 import API from "../api";
+import { setStoredUser } from "../utils/authStorage";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -32,13 +33,13 @@ export default function Login() {
 
     if (email === "admin@eshop.com" && password === "admin123") {
       const adminUser = {
-        user_id: "admin",
+        user_id: 0,
         name: "Admin",
         email: "admin@eshop.com",
         role: "admin",
         is_admin: true
       };
-      localStorage.setItem("user", JSON.stringify(adminUser));
+      setStoredUser(adminUser);
       setMessage("Admin login successful!");
       setTimeout(() => navigate("/admin"), 800);
       return;
@@ -49,7 +50,7 @@ export default function Login() {
       try {
         const response = await API.post("/users", formData);
         setMessage(`Account created! User ID: ${response.data.user_id}`);
-        localStorage.setItem("user", JSON.stringify(response.data));
+        setStoredUser(response.data);
         setTimeout(() => navigate(from), 2000);
       } catch (err) {
         if (err.response && err.response.status === 409) {
@@ -67,7 +68,7 @@ export default function Login() {
           password
         });
 
-        localStorage.setItem("user", JSON.stringify(response.data));
+        setStoredUser(response.data);
         setMessage("Login successful!");
         setTimeout(() => navigate(from), 1000);
       } catch (err) {

@@ -1,5 +1,6 @@
 const WebSocket = require('ws');
 const mongoose = require('mongoose');
+const Event = require('./models/events.js');
 const { Kafka } = require('kafkajs');
 
 const wss = new WebSocket.Server({ port: 8080 });
@@ -19,6 +20,31 @@ let orderCount = 0;
 let eventCount = 0;
 let lastEventTime = Date.now();
 const categoryCounts = {};
+const ACTIVE_USER_WINDOW_MS = 60 * 1000;
+const RATE_WINDOW_MS = 10 * 1000;
+const activeUsers = new Map();
+const eventTimestamps = [];
+const purchaseTimestamps = [];
+
+function updateActiveUsers(userId, now) {
+  if (userId !== null && userId !== undefined && String(userId).trim() !== '') {
+    activeUsers.set(String(userId), now);
+  }
+
+  for (const [id, ts] of activeUsers.entries()) {
+    if (now - ts > ACTIVE_USER_WINDOW_MS) {
+      activeUsers.delete(id);
+    }
+  }
+
+  return activeUsers.size;
+}
+
+function trimOldSamples(samples, now, windowMs) {
+  while (samples.length > 0 && now - samples[0] > windowMs) {
+    samples.shift();
+  }
+}
 
 async function initializeConnection() {
   try {
@@ -81,10 +107,38 @@ async function connectKafkaConsumer() {
 }
 
 function processEvent(event) {
+  const eventType = event.eventType || event.event_type || 'click';
+  const userId = event.userId || event.user_id || null;
+  const orderId = event.orderId || event.order_id || null;
+  const productId = event.productId || event.product_id || null;
+  const quantity = Number(event.quantity || 0) || 0;
+  const amount = Number(event.amount || event.item_total || event.total_amount || 0) || 0;
+
+  // Persist event to MongoDB
+  try {
+    const eventDoc = new Event({
+      userId,
+      productId,
+      eventType,
+      timestamp: event.timestamp ? new Date(event.timestamp) : new Date(),
+      amount,
+      category: event.category,
+      quantity,
+      order_id: orderId,
+      user_id: userId
+    });
+    eventDoc.save().catch(err => console.error('Event save error:', err.message));
+  } catch (err) {
+    console.error('Event persistence error:', err.message);
+  }
   const now = Date.now();
   eventCount++;
+  const activeUserCount = updateActiveUsers(userId, now);
+
+  eventTimestamps.push(now);
+  trimOldSamples(eventTimestamps, now, RATE_WINDOW_MS);
   
-  console.log(`Processing event #${eventCount}:`, event.eventType, event.userId);
+  console.log(`Processing event #${eventCount}:`, eventType, userId);
   
   // Calculate events per second
   const timeDiff = (now - lastEventTime) / 1000;
@@ -98,29 +152,39 @@ function processEvent(event) {
   }
   
   // Update revenue for purchase events
-  if (event.eventType === 'purchase' && event.amount) {
-    baseRevenue += Number(event.amount);
+  if (eventType === 'purchase' && amount > 0) {
+    baseRevenue += amount;
     orderCount++;
-    console.log(`💰 Purchase event: +${event.amount}, Total revenue: ${baseRevenue}`);
+    purchaseTimestamps.push(now);
+    trimOldSamples(purchaseTimestamps, now, RATE_WINDOW_MS);
+    console.log(`💰 Purchase event: +${amount}, Total revenue: ${baseRevenue}`);
   }
+
+  trimOldSamples(purchaseTimestamps, now, RATE_WINDOW_MS);
+  const ordersPerSec = purchaseTimestamps.length / (RATE_WINDOW_MS / 1000);
+  const eventsPerSecWindow = eventTimestamps.length / (RATE_WINDOW_MS / 1000);
   
   // Broadcast live metrics
   const metrics = {
     timestamp: now / 1000,
     revenue: baseRevenue,
     orders: orderCount,
-    ordersPerSec: event.eventType === 'purchase' ? 1 : 0,
-    users: baseUsers,
+    ordersPerSec,
+    users: activeUserCount > 0 ? activeUserCount : baseUsers,
     events: eventCount,
-    eventsPerSec: Math.min(eventsPerSec, 100),
+    eventsPerSec: Math.min(eventsPerSecWindow, 100),
     category: category,
-    eventType: event.eventType,
+    eventType,
     kafkaLag: 0,
-    messagesPerSec: Math.min(eventsPerSec, 100),
+    messagesPerSec: Math.min(eventsPerSecWindow, 100),
     sparkBatchTime: 0,
-    order_id: event.orderId || event.order_id,
-    user_id: event.userId || event.user_id,
-    amount: event.amount || 0,
+    userId,
+    orderId,
+    productId,
+    quantity,
+    order_id: orderId,
+    user_id: userId,
+    amount,
   };
   
   console.log(`📡 Broadcasting to ${clients.size} client(s)`);

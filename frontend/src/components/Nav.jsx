@@ -1,6 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useCart } from "../context/CartContext";
 import { useState, useEffect, useRef } from "react";
+import { clearStoredUser, getStoredUser } from "../utils/authStorage";
 
 export default function Nav() {
   const { cart } = useCart();
@@ -11,10 +12,16 @@ export default function Nav() {
   const profileRef = useRef(null);
 
   useEffect(() => {
-    const userData = localStorage.getItem("user");
-    if (userData) {
-      setUser(JSON.parse(userData));
-    }
+    const syncUser = () => {
+      setUser(getStoredUser());
+    };
+
+    syncUser();
+    window.addEventListener("auth-changed", syncUser);
+
+    return () => {
+      window.removeEventListener("auth-changed", syncUser);
+    };
   }, []);
 
   useEffect(() => {
@@ -31,7 +38,7 @@ export default function Nav() {
   const isAdmin = user && (user.is_admin || user.role === "admin" || user.email === "admin@eshop.com");
 
   const handleLogout = () => {
-    localStorage.removeItem("user");
+    clearStoredUser();
     setUser(null);
     setShowProfileMenu(false);
     navigate("/");

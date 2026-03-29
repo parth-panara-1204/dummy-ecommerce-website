@@ -3,14 +3,14 @@ import { useNavigate } from "react-router-dom";
 import Nav from "../components/Nav";
 import { useCart } from "../context/CartContext";
 import API from "../api";
+import { getStoredUser } from "../utils/authStorage";
 
 export default function Cart() {
   const navigate = useNavigate();
   const { cart, removeFromCart, updateQuantity, clearCart, getTotal } = useCart();
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
-  const userData = sessionStorage.getItem("user") || localStorage.getItem("user");
-  const parsedUser = userData ? JSON.parse(userData) : null;
+  const parsedUser = getStoredUser();
   const isAdminUser = parsedUser?.is_admin || parsedUser?.role === "admin" || parsedUser?.email === "admin@eshop.com";
 
   const handleCheckout = async () => {
@@ -20,7 +20,7 @@ export default function Cart() {
     }
 
     // Check if user is logged in
-    const userData = sessionStorage.getItem("user") || localStorage.getItem("user");
+    const userData = getStoredUser();
     
     if (!userData) {
       // User not logged in - redirect to login
@@ -29,7 +29,7 @@ export default function Cart() {
       return;
     }
 
-    const user = JSON.parse(userData);
+    const user = userData;
     setIsProcessing(true);
 
     try {
@@ -62,8 +62,11 @@ export default function Cart() {
       cart.forEach(item => {
         API.post("/events", {
           userId: user.user_id || null,
+          orderId: order.order_id || null,
           quantity: item.quantity,
           productId: Number(item.product_id),
+          amount: Number(item.price) * Number(item.quantity),
+          category: item.category || null,
           eventType: "purchase"
         }).catch(err => console.error("Kafka purchase track error:", err));
       });

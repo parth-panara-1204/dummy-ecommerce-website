@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Nav from "../components/Nav";
 import API from "../api";
+import { getStoredUser } from "../utils/authStorage";
 
 export default function AddProduct() {
   const navigate = useNavigate();
@@ -21,12 +22,12 @@ export default function AddProduct() {
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    const storedUser = localStorage.getItem("user");
+    const storedUser = getStoredUser();
     if (!storedUser) {
       navigate("/login", { state: { from: "/admin/add-product" } });
       return;
     }
-    setUser(JSON.parse(storedUser));
+    setUser(storedUser);
 
     API.get("/products")
       .then((res) => {

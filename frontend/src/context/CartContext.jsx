@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect } from "react";
+import { getStoredUser } from "../utils/authStorage";
 
 const CartContext = createContext();
 
@@ -9,9 +10,8 @@ export function CartProvider({ children }) {
   });
 
   const isAdminSession = () => {
-    const userData = sessionStorage.getItem("user") || localStorage.getItem("user");
-    if (!userData) return false;
-    const user = JSON.parse(userData);
+    const user = getStoredUser();
+    if (!user) return false;
     return user?.is_admin || user?.role === "admin" || user?.email === "admin@eshop.com";
   };
 

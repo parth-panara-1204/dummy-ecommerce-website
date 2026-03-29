@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import API from "../api";
 import Nav from "../components/Nav";
 import { useCart } from "../context/CartContext";
+import { getStoredUser } from "../utils/authStorage";
 
 
 export default function ProductDetail() {
@@ -21,8 +22,7 @@ export default function ProductDetail() {
   });
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const viewSent = useRef(false);
-  const userData = sessionStorage.getItem("user") || localStorage.getItem("user");
-  const parsedUser = userData ? JSON.parse(userData) : null;
+  const parsedUser = getStoredUser();
   const isAdminUser = parsedUser?.is_admin || parsedUser?.role === "admin" || parsedUser?.email === "admin@eshop.com";
 
   const loadReviews = () => {
@@ -53,8 +53,7 @@ export default function ProductDetail() {
           // Track view event via Kafka (guarded so it runs once)
           if (!viewSent.current) {
             viewSent.current = true;
-            const userStr = sessionStorage.getItem("user") || localStorage.getItem("user") || "{}";
-            const user = JSON.parse(userStr);
+            const user = getStoredUser() || {};
             API.post("/events", {
               userId: user.user_id || null,
               productId: Number(foundProduct.product_id),
@@ -80,8 +79,7 @@ export default function ProductDetail() {
     setAdded(true);
     
     // Track cart event via Kafka
-    const userStr = sessionStorage.getItem("user") || localStorage.getItem("user") || "{}";
-    const user = JSON.parse(userStr);
+    const user = getStoredUser() || {};
     API.post("/events", {
       userId: user.user_id || null,
       quantity: quantity,
@@ -95,14 +93,14 @@ export default function ProductDetail() {
   const handleReviewSubmit = async (e) => {
     e.preventDefault();
     
-    const userData = sessionStorage.getItem("user") || localStorage.getItem("user");
+    const userData = getStoredUser();
     if (!userData) {
       alert("Please login to submit a review");
       navigate("/login", { state: { from: `/product/${id}` } });
       return;
     }
 
-    const parsedUser = JSON.parse(userData);
+    const parsedUser = userData;
     const isAdminUser = parsedUser?.is_admin || parsedUser?.role === "admin" || parsedUser?.email === "admin@eshop.com";
     if (isAdminUser) {
       alert("Admins cannot submit reviews.");
@@ -245,14 +243,13 @@ export default function ProductDetail() {
               <h2>Customer Reviews</h2>
               <button 
                 onClick={() => {
-                  const userStr = localStorage.getItem("user");
-                  if (!userStr) {
+                  const user = getStoredUser();
+                  if (!user) {
                     alert("Please login to write a review");
                     navigate("/login", { state: { from: `/product/${id}` } });
                     return;
                   }
-                  const parsed = JSON.parse(userStr);
-                  const isAdminUser = parsed?.is_admin || parsed?.role === "admin" || parsed?.email === "admin@eshop.com";
+                  const isAdminUser = user?.is_admin || user?.role === "admin" || user?.email === "admin@eshop.com";
                   if (isAdminUser) {
                     alert("Admins cannot submit reviews.");
                     return;

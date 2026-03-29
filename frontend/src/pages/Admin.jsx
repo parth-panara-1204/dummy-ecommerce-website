@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Nav from "../components/Nav";
 import API from "../api";
+import { getStoredUser } from "../utils/authStorage";
 import {
   Bar,
   BarChart,
@@ -70,6 +71,7 @@ function useLiveWebSocket({ url, onMessage, paused }) {
 
 export default function Admin() {
   const navigate = useNavigate();
+  const LIVE_FEED_LIMIT = 10;
   const WS_ENDPOINT = "ws://localhost:8080/stream";
   const revenueSpikeThreshold = 50000;
   const kafkaLagThreshold = 500;
@@ -84,6 +86,8 @@ export default function Admin() {
   const [categoryCounts, setCategoryCounts] = useState({});
   const [health, setHealth] = useState({ kafkaLag: 0, messagesPerSec: 0, sparkBatchTime: 0 });
   const [eventsFeed, setEventsFeed] = useState([]);
+  const [archivedEvents, setArchivedEvents] = useState([]);
+  const [archivedEventsLoading, setArchivedEventsLoading] = useState(false);
   const [alerts, setAlerts] = useState([]);
   const [paused, setPaused] = useState(false);
   const lastRevenueRef = useRef(0);
@@ -94,12 +98,12 @@ export default function Admin() {
   }, [user]);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem("user");
+    const storedUser = getStoredUser();
     if (!storedUser) {
       navigate("/login", { state: { from: "/admin" } });
       return;
     }
-    setUser(JSON.parse(storedUser));
+    setUser(storedUser);
   }, [navigate]);
 
   useEffect(() => {
@@ -125,6 +129,24 @@ export default function Admin() {
     };
 
     fetchData();
+  }, [user, isAdmin]);
+
+  useEffect(() => {
+    if (!user || !isAdmin) return;
+    const fetchArchivedEvents = async () => {
+      setArchivedEventsLoading(true);
+      try {
+        const res = await API.get("/archived-events?limit=20");
+        setArchivedEvents(res.data.events || []);
+      } catch (err) {
+        console.error("Failed to fetch archived events:", err);
+        // Silently fail - this is optional enhancement
+      } finally {
+        setArchivedEventsLoading(false);
+      }
+    };
+
+    fetchArchivedEvents();
   }, [user, isAdmin]);
 
   const totalRevenue = useMemo(
@@ -202,12 +224,18 @@ export default function Admin() {
   const handleStreamMessage = useCallback(
     (msg) => {
       const ts = msg.timestamp ? msg.timestamp * 1000 : Date.now();
+      const eventType = msg.eventType || msg.event_type || "unknown";
+      const userId = msg.userId || msg.user_id || "-";
+      const orderId = msg.orderId || msg.order_id || null;
+      const productId = msg.productId || msg.product_id || null;
+      const quantity = Number(msg.quantity ?? 0) || 0;
+      const amount = Number(msg.amount ?? msg.item_total ?? msg.total_amount ?? 0) || 0;
 
       setLiveKpis((prev) => ({
         revenue: msg.revenue ?? prev.revenue,
-        ordersPerSec: msg.orders ?? prev.ordersPerSec,
+        ordersPerSec: msg.ordersPerSec ?? prev.ordersPerSec,
         users: msg.users ?? prev.users,
-        eventsPerSec: msg.events ?? prev.eventsPerSec,
+        eventsPerSec: msg.eventsPerSec ?? prev.eventsPerSec,
       }));
 
       setRevenuePoints((prev) => {
@@ -230,8 +258,19 @@ export default function Admin() {
         sparkBatchTime: msg.sparkBatchTime ?? msg.batchTime ?? prev.sparkBatchTime,
       }));
 
-      if (msg.order_id || msg.user_id) {
-        setEventsFeed((prev) => [{ order_id: msg.order_id, user_id: msg.user_id, amount: msg.amount ?? msg.revenue ?? 0, timestamp: ts }, ...prev].slice(0, 10));
+      if (eventType !== "unknown" || orderId || userId !== "-" || productId) {
+        setEventsFeed((prev) => [
+          {
+            orderId,
+            userId,
+            productId,
+            eventType,
+            quantity,
+            amount,
+            timestamp: ts,
+          },
+          ...prev,
+        ].slice(0, LIVE_FEED_LIMIT));
       }
 
       const prevRevenue = lastRevenueRef.current || 0;
@@ -347,28 +386,6 @@ export default function Admin() {
               <div className="dashboard-layout">
                 <div className="panel">
                   <div className="panel-header" style={{ justifyContent: "space-between" }}>
-                    <h3>Revenue (Live)</h3>
-                    <span className="panel-meta">Last 100 points</span>
-                  </div>
-                  {liveLineData.length === 0 ? (
-                    <p className="muted">Waiting for live data...</p>
-                  ) : (
-                    <div style={{ width: "100%", height: 240 }}>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={liveLineData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="label" hide tick={false} />
-                          <YAxis hide tick={false} />
-                          <Tooltip formatter={(value) => formatINRShort(value)} labelFormatter={() => "Live"} />
-                          <Line type="monotone" dataKey="revenue" stroke="#2563eb" dot={false} isAnimationActive />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  )}
-                </div>
-
-                <div className="panel">
-                  <div className="panel-header" style={{ justifyContent: "space-between" }}>
                     <h3>Top Categories (Live)</h3>
                     <span className="panel-meta">Sliding window</span>
                   </div>
@@ -449,7 +466,7 @@ export default function Admin() {
                 <div className="panel">
                   <div className="panel-header" style={{ justifyContent: "space-between" }}>
                     <h3>Live Event Feed</h3>
-                    <span className="panel-meta">Latest 10</span>
+                    <span className="panel-meta">Latest {LIVE_FEED_LIMIT}</span>
                   </div>
                   {eventsFeed.length === 0 ? (
                     <p className="muted">Waiting for events...</p>
@@ -457,19 +474,56 @@ export default function Admin() {
                     <table className="data-table">
                       <thead>
                         <tr>
-                          <th>Order</th>
+                          <th>Event</th>
                           <th>User</th>
-                          <th>Amount</th>
+                          <th>Product / Order</th>
+                          <th>Amount / Qty</th>
                           <th>Time</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {eventsFeed.map((evt, idx) => (
-                          <tr key={`${evt.order_id || idx}-${evt.timestamp}`}>
-                            <td>{evt.order_id || "-"}</td>
-                            <td>{evt.user_id || "-"}</td>
-                            <td>{formatINRShort(evt.amount)}</td>
+                        {eventsFeed.slice(0, LIVE_FEED_LIMIT).map((evt, idx) => (
+                          <tr key={`${evt.orderId || evt.productId || idx}-${evt.timestamp}`}>
+                            <td>{evt.eventType || "-"}</td>
+                            <td>{evt.userId || "-"}</td>
+                            <td>{evt.orderId ? `Order ${evt.orderId}` : evt.productId ? `Product ${evt.productId}` : "-"}</td>
+                            <td>{evt.amount > 0 ? formatINRShort(evt.amount) : evt.quantity > 0 ? `Qty ${evt.quantity}` : "-"}</td>
                             <td>{new Date(evt.timestamp).toLocaleTimeString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+
+                <div className="panel">
+                  <div className="panel-header" style={{ justifyContent: "space-between" }}>
+                    <h3>Archived Events (Parquet)</h3>
+                    <span className="panel-meta">{archivedEventsLoading ? "Loading..." : `${archivedEvents.length} events`}</span>
+                  </div>
+                  {archivedEventsLoading ? (
+                    <p className="muted">Loading archived events from MinIO...</p>
+                  ) : archivedEvents.length === 0 ? (
+                    <p className="muted">No archived events found. Spark is writing to parquet...</p>
+                  ) : (
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>User ID</th>
+                          <th>Product ID</th>
+                          <th>Event Type</th>
+                          <th>Timestamp</th>
+                          <th>Source</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {archivedEvents.map((evt, idx) => (
+                          <tr key={`archived-${idx}`}>
+                            <td>{evt.userId || evt.user_id || "-"}</td>
+                            <td>{evt.productId || evt.product_id || "-"}</td>
+                            <td>{evt.eventType || evt.event_type || "-"}</td>
+                            <td>{evt.timestamp ? new Date(evt.timestamp).toLocaleTimeString() : "-"}</td>
+                            <td><span className="muted">{evt._source || "unknown"}</span></td>
                           </tr>
                         ))}
                       </tbody>
